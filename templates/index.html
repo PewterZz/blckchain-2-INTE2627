@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>INTE2627 A2 - Secure Inventory</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; padding: 20px; }
+        .container { max-width: 800px; margin: auto; background: #f4f4f4; padding: 20px; border-radius: 5px; }
+        .section { background: #fff; padding: 15px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 3px; }
+        h2, h3 { color: #333; }
+        label { display: block; margin-bottom: 5px; }
+        input[type="text"], input[type="number"], select { width: 95%; padding: 8px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 3px; }
+        button { background: #5cb85c; color: white; padding: 10px 15px; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #4cae4c; }
+        pre { background: #eee; padding: 10px; border: 1px solid #ccc; white-space: pre-wrap; word-wrap: break-word; max-height: 200px; overflow-y: auto; }
+        .error { color: red; font-weight: bold; }
+        .success { color: green; font-weight: bold; }
+        textarea { width: 95%; min-height: 80px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>INTE2627 Assignment 2 - Secure DLT Inventory</h1>
+        <p>RMIT Classification: Trusted</p>
+
+        <!-- Part 1: Add New Record -->
+        <div class="section">
+            <h2>Part 1: Add New Record (RSA Sign & Consensus)</h2>
+            <form id="addRecordForm">
+                <label for="signer">Signing Inventory:</label>
+                <select id="signer" name="signer">
+                    <option value="A">Inventory A</option>
+                    <option value="B">Inventory B</option>
+                    <option value="C">Inventory C</option>
+                    <option value="D">Inventory D</option>
+                </select>
+
+                <label for="item_id">Item ID:</label>
+                <input type="text" id="item_id" name="item_id" required placeholder="e.g., 005">
+
+                <label for="qty">Quantity:</label>
+                <input type="number" id="qty" name="qty" required placeholder="e.g., 50">
+
+                <label for="price">Price:</label>
+                <input type="number" id="price" name="price" required placeholder="e.g., 25">
+
+                <label for="location">Location:</label>
+                <input type="text" id="location" name="location" required placeholder="e.g., Z">
+
+                <button type="submit">Sign & Propose Record</button>
+            </form>
+            <div id="addRecordResult">
+                <h3>Status:</h3>
+                <pre></pre>
+            </div>
+        </div>
+
+        <!-- Part 2: Query Item -->
+        <div class="section">
+            <h2>Part 2: Query Item (Harn Multi-Sig & RSA Encrypt)</h2>
+            <form id="queryItemForm">
+                <label for="query_item_id">Item ID to Query:</label>
+                <input type="text" id="query_item_id" name="query_item_id" required placeholder="e.g., 002">
+                <button type="submit">Query Item</button>
+            </form>
+            <div id="queryResult">
+                <h3>Query Response (Encrypted):</h3>
+                <pre id="encryptedData"></pre>
+                <h3>Aggregated Signature & Params:</h3>
+                <pre id="signatureData"></pre>
+                <form id="decryptVerifyForm" style="display: none;">
+                     <input type="hidden" id="hidden_encrypted_data" name="encrypted_data">
+                     <input type="hidden" id="hidden_agg_sig" name="aggregated_signature">
+                     <input type="hidden" id="hidden_ids" name="identities">
+                     <input type="hidden" id="hidden_rands" name="random_values">
+                     <input type="hidden" id="hidden_e_pkg" name="e_pkg">
+                     <input type="hidden" id="hidden_n_pkg" name="n_pkg">
+                     <button type="submit">Decrypt & Verify Response</button>
+                 </form>
+            </div>
+             <div id="decryptVerifyResult">
+                <h3>Decryption & Verification Result:</h3>
+                <pre></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Add Record Handler ---
+        const addRecordForm = document.getElementById('addRecordForm');
+        const addRecordResult = document.getElementById('addRecordResult').querySelector('pre');
+
+        addRecordForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            addRecordResult.textContent = 'Processing...';
+            const formData = new FormData(addRecordForm);
+            const data = Object.fromEntries(formData.entries());
+
+            try {
+                const response = await fetch('/add_record', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                addRecordResult.textContent = JSON.stringify(result, null, 2);
+                if (response.ok && result.status === 'Consensus Reached') {
+                     addRecordResult.className = 'success';
+                } else {
+                     addRecordResult.className = 'error';
+                }
+
+            } catch (error) {
+                addRecordResult.textContent = `Error: ${error}`;
+                addRecordResult.className = 'error';
+            }
+        });
+
+        // --- Query Item Handler ---
+        const queryItemForm = document.getElementById('queryItemForm');
+        const encryptedDataPre = document.getElementById('encryptedData');
+        const signatureDataPre = document.getElementById('signatureData');
+        const decryptVerifyForm = document.getElementById('decryptVerifyForm');
+        const decryptVerifyResultPre = document.getElementById('decryptVerifyResult').querySelector('pre');
+
+
+        queryItemForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            encryptedDataPre.textContent = 'Querying...';
+            signatureDataPre.textContent = '';
+            decryptVerifyResultPre.textContent = '';
+            decryptVerifyForm.style.display = 'none';
+
+            const formData = new FormData(queryItemForm);
+            const data = Object.fromEntries(formData.entries());
+
+            try {
+                const response = await fetch('/query_item', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+
+                if (response.ok) {
+                    encryptedDataPre.textContent = `Ciphertext: ${result.encrypted_record}`;
+                    signatureDataPre.textContent = `Aggregated Signature: ${result.aggregated_signature}\n`
+                                                 + `Signer IDs: ${JSON.stringify(result.identities)}\n`
+                                                 + `Random Values: ${JSON.stringify(result.random_values)}\n`
+                                                 + `PKG Params (e, n): (${result.e_pkg}, ${result.n_pkg})`;
+
+                    // Populate hidden form for decryption/verification
+                    document.getElementById('hidden_encrypted_data').value = result.encrypted_record;
+                    document.getElementById('hidden_agg_sig').value = result.aggregated_signature;
+                    document.getElementById('hidden_ids').value = JSON.stringify(result.identities); // Send as JSON string
+                    document.getElementById('hidden_rands').value = JSON.stringify(result.random_values); // Send as JSON string
+                    document.getElementById('hidden_e_pkg').value = result.e_pkg;
+                    document.getElementById('hidden_n_pkg').value = result.n_pkg;
+
+                    decryptVerifyForm.style.display = 'block'; // Show the decrypt button
+                } else {
+                     encryptedDataPre.textContent = `Error: ${result.error || 'Unknown query error'}`;
+                     encryptedDataPre.className = 'error';
+                     signatureDataPre.textContent = '';
+                }
+
+            } catch (error) {
+                encryptedDataPre.textContent = `Error: ${error}`;
+                encryptedDataPre.className = 'error';
+                signatureDataPre.textContent = '';
+            }
+        });
+
+         // --- Decrypt/Verify Handler ---
+        decryptVerifyForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            decryptVerifyResultPre.textContent = 'Decrypting and Verifying...';
+
+            const formData = new FormData(decryptVerifyForm);
+             // Need to parse the JSON strings back to arrays for the backend
+            const data = {
+                encrypted_data: formData.get('hidden_encrypted_data'),
+                aggregated_signature: formData.get('hidden_agg_sig'),
+                identities: JSON.parse(formData.get('hidden_ids')),
+                random_values: JSON.parse(formData.get('hidden_rands')),
+                e_pkg: formData.get('hidden_e_pkg'),
+                n_pkg: formData.get('hidden_n_pkg')
+            };
+
+
+            try {
+                const response = await fetch('/decrypt_verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                decryptVerifyResultPre.textContent = JSON.stringify(result, null, 2);
+                 if (response.ok && result.verification_status === 'Verified Successfully') {
+                     decryptVerifyResultPre.className = 'success';
+                } else {
+                     decryptVerifyResultPre.className = 'error';
+                }
+
+            } catch (error) {
+                decryptVerifyResultPre.textContent = `Error: ${error}`;
+                decryptVerifyResultPre.className = 'error';
+            }
+        });
+
+    </script>
+</body>
+</html>
