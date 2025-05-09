@@ -126,14 +126,15 @@ def harn_pkg_setup(p, q, e):
 
 def harn_extract_secret_key(identity_int, pkg_master_secret, n_pkg):
     """Computes the user's secret key s_i based on their identity."""
-    # s_i = ID_i ^ d_pkg mod n_pkg
-    user_secret_key = pow(identity_int, pkg_master_secret, n_pkg)
+    # s_i = identity_int * d_pkg (so that s_i * e_pkg ≡ identity_int mod φ(n))
+    user_secret_key = identity_int * pkg_master_secret
     return user_secret_key
 
-def harn_hash_msg_rand(message, random_val, n_pkg):
-    """Hashes the message concatenated with the random value."""
+def harn_hash_msg_rand(message, random_val, n_pkg=None):
+    """Hashes the message concatenated with the random value using full SHA-256."""
     combined = f"{message}||{random_val}"
-    return hash_message_to_int(combined, n_pkg)
+    # Use the full hash rather than reducing modulo n_pkg to avoid hash collisions
+    return hash_message_to_int(combined)
 
 def harn_partial_sign(message, random_val, user_secret_key, n_pkg):
     """Generates a partial signature for the message."""
@@ -159,9 +160,21 @@ def harn_verify_multi_sig(
 ):
     """Verifies the aggregated multi-signature."""
     e_pkg, n_pkg = pkg_public_params
+    
+    # Ensure all parameters are integers
+    if isinstance(aggregated_sigma, str):
+        aggregated_sigma = int(aggregated_sigma)
+    if isinstance(e_pkg, str):
+        e_pkg = int(e_pkg)
+    if isinstance(n_pkg, str):
+        n_pkg = int(n_pkg)
 
+    print(f"Verification using: e_pkg={e_pkg}, n_pkg={n_pkg}")
+    # Compute left side: sigma^e_pkg mod n_pkg
     left_side = pow(aggregated_sigma, e_pkg, n_pkg)
+    print(f"Left side (sigma^e): {left_side}")
 
+    # Compute right side: product(H(m||r_i) ^ identity_int mod n_pkg)
     right_side = 1
     if len(identities) != len(random_values):
         raise ValueError("Number of identities and random values must match.")
@@ -170,10 +183,12 @@ def harn_verify_multi_sig(
         identity_int = identities[i]
         random_val = random_values[i]
         h_mr = harn_hash_msg_rand(message, random_val, n_pkg)
+        # Correct: raise hash to the identity power
         term = pow(h_mr, identity_int, n_pkg)
         right_side = (right_side * term) % n_pkg
+        print(f"  Term {i+1}: identity={identity_int}, random={random_val}, h_mr={h_mr}, term={term}")
 
-    # Compare
+    print(f"Right side: {right_side}")
     return left_side == right_side
 
 

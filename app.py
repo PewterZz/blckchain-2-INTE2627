@@ -89,8 +89,6 @@ def load_inventory(inv_id):
             return json.load(f)
     except FileNotFoundError:
         print(f"Warning: Inventory file not found for {inv_id}. Returning empty list.")
-        # If file doesn't exist, maybe create it with initial data?
-        # For now, return empty. Ensure initial files exist.
         return []
     except json.JSONDecodeError:
         print(f"Error: Could not decode JSON from {path}. Returning empty list.")
@@ -151,11 +149,9 @@ def add_record():
     print("--- Starting Consensus ---")
     validations = 0
     verification_details = {}
-    # The signer implicitly validates its own proposal
     validations += 1
     verification_details[signer_id] = "Self-validated (Signer)"
 
-    # Simulate broadcasting to other nodes and verifying
     signer_public_key = RSA_PUBLIC_KEYS[signer_id]
     for node_id in INVENTORY_IDS:
         if node_id != signer_id:
@@ -183,11 +179,10 @@ def add_record():
         success = True
         for node_id in INVENTORY_IDS:
             inventory_data = load_inventory(node_id)
-            # Prevent adding duplicate IDs (simple check)
             if any(item['id'] == new_record['id'] for item in inventory_data):
                  print(f"  - Node {node_id}: Record ID {new_record['id']} already exists. Skipping add.")
                  commit_status[node_id] = "Skipped (ID exists)"
-                 continue # Or handle as error depending on requirements
+                 continue 
 
             inventory_data.append(new_record)
             if save_inventory(node_id, inventory_data):
@@ -196,14 +191,14 @@ def add_record():
             else:
                 commit_status[node_id] = "Commit Failed (Save Error)"
                 print(f"  - Node {node_id}: Failed to save inventory.")
-                success = False # Mark overall success as false if any save fails
+                success = False 
 
         if success:
              return jsonify({
                  "status": "Consensus Reached",
                  "message": "Record added to inventories.",
                  "new_record": new_record,
-                 "signature": str(signature), # Convert large int to string for JSON
+                 "signature": str(signature), 
                  "verification_details": verification_details,
                  "commit_status": commit_status
              }), 200
@@ -242,8 +237,8 @@ def query_item():
     # 1. Find Record & Collect Partial Signatures
     found_record_str = None
     partial_signatures = []
-    signer_ids_int = [] # Store integer IDs used for signing
-    signer_random_vals = [] # Store random values used
+    signer_ids_int = [] 
+    signer_random_vals = [] 
     nodes_checked = 0
     consistent_record = True
 
@@ -262,19 +257,16 @@ def query_item():
 
         if record_found_in_node:
             nodes_checked += 1
-            # Use a consistent string representation for signing
             current_record_str = f"ID:{item['id']},QTY:{item['qty']},PRICE:{item['price']},LOC:{item['location']}"
             print(f"    Record found: {current_record_str}")
 
             if found_record_str is None:
-                found_record_str = current_record_str # Set based on first find
+                found_record_str = current_record_str 
             elif found_record_str != current_record_str:
                 print(f"    ERROR: Inconsistent record found by Node {node_id}!")
                 consistent_record = False
-                # Decide how to handle inconsistency - stop or report? Stop for now.
                 return jsonify({"error": f"Inconsistent data found for item {item_id_to_query} across nodes."}), 500
 
-            # Generate partial signature
             try:
                 user_secret = HARN_USER_SECRET_KEYS[node_id]
                 identity_int = HARN_IDS[node_id]
@@ -295,8 +287,6 @@ def query_item():
                  return jsonify({"error": f"Partial signing failed for node {node_id}: {e}"}), 500
         else:
             print(f"    Record ID {item_id_to_query} not found in Node {node_id}.")
-            # If not found in one node, is that an error or expected? Assume error for now.
-            # If it's okay for some nodes not to have it, adjust logic.
             return jsonify({"error": f"Item ID {item_id_to_query} not found in inventory {node_id}"}), 404
 
     if not found_record_str:
@@ -329,12 +319,13 @@ def query_item():
 
     # 4. Return Encrypted Data and Signature Info
     return jsonify({
-        "encrypted_record": str(encrypted_record), # Convert large int for JSON
-        "aggregated_signature": str(aggregated_sigma), # Convert large int for JSON
+        "encrypted_record": str(encrypted_record), 
+        "aggregated_signature": str(aggregated_sigma), 
         "identities": signer_ids_int,
         "random_values": signer_random_vals,
-        "e_pkg": e_pkg,
-        "n_pkg": n_pkg
+        "e_pkg": str(e_pkg),  
+        "n_pkg": str(n_pkg),  
+        "signed_message": found_record_str 
     }), 200
 
 
@@ -346,9 +337,8 @@ def decrypt_verify():
          return jsonify({"error": "Missing JSON request body"}), 400
 
     print(f"\n--- Decrypting and Verifying Response ---")
-    print(f"Received data: {data}") # Log received data for debugging
+    print(f"Received data: {data}")
 
-    # --- Input Validation ---
     required_keys = [
         'encrypted_data', 'aggregated_signature', 'identities',
         'random_values', 'e_pkg', 'n_pkg'
@@ -358,23 +348,27 @@ def decrypt_verify():
 
     for key in required_keys:
         value = data.get(key)
-        if value is None: # Check if key exists and value is not None
+        if value is None or value == '': 
             errors[key] = "Missing required field"
         else:
-            # Try converting numeric fields, validate list types
             if key in ['encrypted_data', 'aggregated_signature', 'e_pkg', 'n_pkg']:
                 try:
-                    processed_data[key] = int(value)
+                    if isinstance(value, str) and ('e' in value.lower() or 'E' in value):
+                        value = float(value)  
+                    processed_data[key] = int(value) 
                 except (ValueError, TypeError):
                     errors[key] = f"Invalid value: Must be convertible to an integer (got '{value}')"
             elif key in ['identities', 'random_values']:
                  if not isinstance(value, list):
                       errors[key] = f"Invalid type: Must be a list (got {type(value).__name__})"
                  else:
-                      # Optional: Add deeper validation (e.g., check if list elements are ints)
                       processed_data[key] = value
             else:
-                 processed_data[key] = value # Should not happen with current keys
+                 processed_data[key] = value
+
+    signed_message = data.get('signed_message')
+    if signed_message:
+        processed_data['signed_message'] = signed_message
 
     if errors:
         print(f"Validation Errors: {errors}")
@@ -390,6 +384,9 @@ def decrypt_verify():
 
     print(f"Validated Ciphertext: {encrypted_data}")
     print(f"Validated Aggregated Sig: {aggregated_signature}")
+    print(f"Identities: {identities}")
+    print(f"Random Values: {random_values}")
+    print(f"PKG params (e, n): ({e_pkg}, {n_pkg})")
 
     # 1. Decrypt using Officer's Private Key
     if not OFFICER_PRIVATE_KEY:
@@ -398,13 +395,10 @@ def decrypt_verify():
 
     try:
         decrypted_message = rsa_decrypt(encrypted_data, OFFICER_PRIVATE_KEY)
-        # Strip potential null bytes from conversion if necessary
         decrypted_message = decrypted_message.replace('\x00', '').strip()
         print(f"Decrypted Message: {decrypted_message}")
     except Exception as e:
         print(f"ERROR: Decryption failed: {e}")
-        # It's possible decryption yields non-utf8 if something went wrong
-        # or if the int->bytes conversion needs refinement.
         raw_decryption_int = "Error calculating raw int"
         try:
             # Attempt to show the raw integer result for debugging
@@ -420,9 +414,21 @@ def decrypt_verify():
     # 2. Verify Multi-Signature
     pkg_public_params = (e_pkg, n_pkg)
     try:
+        # Use the original signed message if available, otherwise use the decrypted message
+        verification_message = processed_data.get('signed_message', decrypted_message)
+        print(f"Using message for verification: {verification_message}")
+        
+        # Log values for debugging
+        print(f"Verifying multi-signature:")
+        print(f"  Message: {verification_message}")
+        print(f"  Aggregated Signature: {aggregated_signature}")
+        print(f"  Identities: {identities}")
+        print(f"  Random Values: {random_values}")
+        print(f"  PKG Params (e, n): {pkg_public_params}")
+        
         # Ensure the message used for verification matches the one signed
         is_verified = harn_verify_multi_sig(
-            decrypted_message, # Use the stripped message
+            verification_message,
             aggregated_signature,
             identities,
             random_values,
@@ -446,12 +452,10 @@ def decrypt_verify():
 
 
 
-# --- Main Execution ---
 if __name__ == '__main__':
     initialize_keys() # Generate keys when the app starts
-    # Check if essential keys were generated
     if not RSA_PUBLIC_KEYS or not PKG_PUBLIC_PARAMS or not OFFICER_PUBLIC_KEY:
          print("\nCRITICAL ERROR: Essential keys failed to initialize. Exiting.")
          exit(1)
     print("\nStarting Flask server...")
-    app.run(debug=True, port=5001) # Use a specific port like 5001
+    app.run(debug=True, port=5001) 

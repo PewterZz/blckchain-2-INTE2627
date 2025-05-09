@@ -21,7 +21,6 @@
 <body>
     <div class="container">
         <h1>INTE2627 Assignment 2 - Secure DLT Inventory</h1>
-        <p>RMIT Classification: Trusted</p>
 
         <!-- Part 1: Add New Record -->
         <div class="section">
@@ -75,6 +74,7 @@
                      <input type="hidden" id="hidden_rands" name="random_values">
                      <input type="hidden" id="hidden_e_pkg" name="e_pkg">
                      <input type="hidden" id="hidden_n_pkg" name="n_pkg">
+                     <input type="hidden" id="hidden_signed_message" name="signed_message">
                      <button type="submit">Decrypt & Verify Response</button>
                  </form>
             </div>
@@ -149,13 +149,25 @@
                                                  + `Random Values: ${JSON.stringify(result.random_values)}\n`
                                                  + `PKG Params (e, n): (${result.e_pkg}, ${result.n_pkg})`;
 
-                    // Populate hidden form for decryption/verification
+                    // Populate hidden form for decryption/verification - ensuring values are strings to preserve precision
                     document.getElementById('hidden_encrypted_data').value = result.encrypted_record;
                     document.getElementById('hidden_agg_sig').value = result.aggregated_signature;
-                    document.getElementById('hidden_ids').value = JSON.stringify(result.identities); // Send as JSON string
-                    document.getElementById('hidden_rands').value = JSON.stringify(result.random_values); // Send as JSON string
+                    document.getElementById('hidden_ids').value = JSON.stringify(result.identities);
+                    document.getElementById('hidden_rands').value = JSON.stringify(result.random_values);
                     document.getElementById('hidden_e_pkg').value = result.e_pkg;
                     document.getElementById('hidden_n_pkg').value = result.n_pkg;
+                    document.getElementById('hidden_signed_message').value = result.signed_message;
+
+                    // Debug logging
+                    console.log("Data prepared for decrypt/verify:", {
+                        encrypted_data: result.encrypted_record,
+                        aggregated_signature: result.aggregated_signature,
+                        identities: result.identities,
+                        random_values: result.random_values,
+                        e_pkg: result.e_pkg,
+                        n_pkg: result.n_pkg,
+                        signed_message: result.signed_message
+                    });
 
                     decryptVerifyForm.style.display = 'block'; // Show the decrypt button
                 } else {
@@ -176,17 +188,19 @@
             e.preventDefault();
             decryptVerifyResultPre.textContent = 'Decrypting and Verifying...';
 
-            const formData = new FormData(decryptVerifyForm);
-             // Need to parse the JSON strings back to arrays for the backend
+            // Collect data from the hidden fields
             const data = {
-                encrypted_data: formData.get('hidden_encrypted_data'),
-                aggregated_signature: formData.get('hidden_agg_sig'),
-                identities: JSON.parse(formData.get('hidden_ids')),
-                random_values: JSON.parse(formData.get('hidden_rands')),
-                e_pkg: formData.get('hidden_e_pkg'),
-                n_pkg: formData.get('hidden_n_pkg')
+                encrypted_data: document.getElementById('hidden_encrypted_data').value,
+                aggregated_signature: document.getElementById('hidden_agg_sig').value,
+                identities: JSON.parse(document.getElementById('hidden_ids').value),
+                random_values: JSON.parse(document.getElementById('hidden_rands').value),
+                e_pkg: document.getElementById('hidden_e_pkg').value,
+                n_pkg: document.getElementById('hidden_n_pkg').value,
+                signed_message: document.getElementById('hidden_signed_message').value
             };
 
+            // Log the data being sent to help with debugging
+            console.log("Sending data to decrypt_verify endpoint:", data);
 
             try {
                 const response = await fetch('/decrypt_verify', {
@@ -196,10 +210,10 @@
                 });
                 const result = await response.json();
                 decryptVerifyResultPre.textContent = JSON.stringify(result, null, 2);
-                 if (response.ok && result.verification_status === 'Verified Successfully') {
-                     decryptVerifyResultPre.className = 'success';
+                if (response.ok && result.verification_status === 'Verified Successfully') {
+                    decryptVerifyResultPre.className = 'success';
                 } else {
-                     decryptVerifyResultPre.className = 'error';
+                    decryptVerifyResultPre.className = 'error';
                 }
 
             } catch (error) {
