@@ -123,6 +123,10 @@ def add_record():
         "location": data.get('location')
     }
 
+    if signer_id not in ['A', 'B', 'C', 'D']:
+        return jsonify({"error": "Invalid inventory ID. Must be one of A, B, C, or D"}), 400
+    if new_record['location'] not in ['A', 'B', 'C', 'D']:
+        return jsonify({"error": "Invalid inventory ID. Must be one of A, B, C, or D"}), 400
     if not all([signer_id, new_record['id'], new_record['qty'] is not None, new_record['price'] is not None, new_record['location']]):
          return jsonify({"error": "Missing required fields"}), 400
     if signer_id not in INVENTORY_IDS:
