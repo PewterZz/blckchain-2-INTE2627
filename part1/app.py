@@ -15,7 +15,7 @@ from crypto_utils import (
 
 app = Flask(__name__, template_folder='./templates')
 DATA_DIR = "data"
-os.makedirs(DATA_DIR, exist_ok=True)  # Ensure data directory exists
+os.makedirs(DATA_DIR, exist_ok=True)  
 
 RSA_PUBLIC_KEYS = {}
 RSA_PRIVATE_KEYS = {}
@@ -146,6 +146,16 @@ def add_record():
              "error": "Invalid signer inventory ID",
              "details": "The signer ID must be a valid inventory node."
          }), 400
+         
+    # Check if item ID already exists in any inventory
+    for node_id in INVENTORY_IDS:
+        inventory_data = load_inventory(node_id)
+        if any(item['id'] == new_record['id'] for item in inventory_data):
+            return jsonify({
+                "status": "Error",
+                "error": f"Item ID '{new_record['id']}' already exists in inventory {node_id}",
+                "details": "Cannot add a record with an ID that already exists. Use a different ID."
+            }), 409  # 409 Conflict
 
     message = f"ADD:{new_record['id']},{new_record['qty']},{new_record['price']},{new_record['location']}"
     print(f"\n--- Proposing Record ---")
@@ -249,11 +259,7 @@ def add_record():
         success = True
         for node_id in INVENTORY_IDS:
             inventory_data = load_inventory(node_id)
-            if any(item['id'] == new_record['id'] for item in inventory_data):
-                 print(f"  - Node {node_id}: Record ID {new_record['id']} already exists. Skipping add.")
-                 commit_status[node_id] = "Skipped (ID exists)"
-                 continue 
-
+            # No need to check again as we already verified the ID doesn't exist
             inventory_data.append(new_record)
             if save_inventory(node_id, inventory_data):
                 commit_status[node_id] = "Committed"
