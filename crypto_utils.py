@@ -86,22 +86,60 @@ def rsa_verify(message, signature, public_key):
     return decrypted_hash_int == msg_hash_int
 
 def rsa_encrypt(message_str, public_key):
-    """Encrypts a string message using RSA public key."""
+    """Encrypts a string message using RSA public key.
+    If message is too large, splits it into chunks."""
     e, n = public_key
-    msg_int = message_to_int(message_str)
-    if msg_int >= n:
-        raise ValueError(
-            "Message integer representation is larger than modulus n"
-        )
-    ciphertext = pow(msg_int, e, n)
-    return ciphertext
+    
+    # Calculate maximum bytes that can be encrypted with this key
+    max_bytes = (n.bit_length() - 1) // 8
+    
+    # If message fits in one block, encrypt normally
+    msg_bytes = message_str.encode("utf-8")
+    if len(msg_bytes) <= max_bytes - 11:  # Reserve space for PKCS#1 padding
+        msg_int = message_to_int(message_str)
+        if msg_int >= n:
+            raise ValueError(
+                f"Message integer representation ({msg_int}) is larger than modulus n ({n})"
+            )
+        return pow(msg_int, e, n)
+    
+    # For larger messages, encrypt in chunks and combine with a delimiter
+    chunks = []
+    chunk_size = max_bytes - 11  # Safe size accounting for padding
+    
+    # Split message into chunks
+    for i in range(0, len(msg_bytes), chunk_size):
+        chunk = msg_bytes[i:i+chunk_size].decode('utf-8', errors='ignore')
+        chunk_int = message_to_int(chunk)
+        encrypted_chunk = pow(chunk_int, e, n)
+        chunks.append(str(encrypted_chunk))
+    
+    # Return a special format indicating chunked encryption
+    return "CHUNKED:" + "|".join(chunks)
 
 def rsa_decrypt(ciphertext, private_key):
-    """Decrypts a ciphertext using RSA private key."""
+    """Decrypts a ciphertext using RSA private key.
+    Handles both single blocks and chunked messages."""
     d, n = private_key
+    
+    # Check if this is a chunked ciphertext
+    if isinstance(ciphertext, str) and ciphertext.startswith("CHUNKED:"):
+        chunks = ciphertext[8:].split("|")  # Remove "CHUNKED:" prefix and split
+        decrypted_chunks = []
+        
+        for chunk in chunks:
+            chunk_int = int(chunk)
+            decrypted_int = pow(chunk_int, d, n)
+            byte_len = (n.bit_length() + 7) // 8
+            decrypted_text = int_to_message(decrypted_int, byte_len)
+            decrypted_chunks.append(decrypted_text)
+        
+        # Combine all chunks
+        return "".join(decrypted_chunks)
+    
+    # Regular single-block decryption
     decrypted_int = pow(ciphertext, d, n)
-    #need padding
-    byte_len = (n.bit_length() + 7) // 8 #max
+    byte_len = (n.bit_length() + 7) // 8  # max
     return int_to_message(decrypted_int, byte_len)
 
 

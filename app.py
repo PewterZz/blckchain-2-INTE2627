@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify
 import json
 import os
+import time
 from config import (
     INVENTORY_KEYS, PKG_PARAMS, PROCUREMENT_OFFICER_KEYS,
     HARN_IDS, HARN_RANDOM_VALUES, CONSENSUS_THRESHOLD, INVENTORY_IDS
@@ -8,12 +9,14 @@ from config import (
 from crypto_utils import (
     generate_rsa_keys, rsa_sign, rsa_verify, rsa_encrypt, rsa_decrypt,
     harn_pkg_setup, harn_extract_secret_key, harn_partial_sign,
-    harn_aggregate_signatures, harn_verify_multi_sig
+    harn_aggregate_signatures, harn_verify_multi_sig, harn_hash_msg_rand,
+    hash_message_to_int
 )
+import hashlib
 
 app = Flask(__name__)
 DATA_DIR = "data"
-os.makedirs(DATA_DIR, exist_ok=True) # Ensure data directory exists
+os.makedirs(DATA_DIR, exist_ok=True) 
 
 RSA_PUBLIC_KEYS = {}
 RSA_PRIVATE_KEYS = {}
@@ -115,22 +118,66 @@ def index():
 def add_record():
     """Handles adding a new record: RSA Sign -> Consensus -> Commit."""
     data = request.get_json()
+    if not data:
+        return jsonify({
+            "status": "Error",
+            "error": "Missing or invalid JSON data",
+            "details": "Please provide all required fields in the correct format."
+        }), 400
+        
     signer_id = data.get('signer')
+    
+    # Check for required fields first
+    required_fields = ['item_id', 'qty', 'price', 'location']
+    missing_fields = [field for field in required_fields if field not in data or data[field] is None]
+    if missing_fields:
+        return jsonify({
+            "status": "Error",
+            "error": f"Missing required fields: {', '.join(missing_fields)}",
+            "details": "All fields (item_id, qty, price, location) are required."
+        }), 400
+        
+    try:
+        qty = int(data.get('qty'))
+        price = int(data.get('price'))
+    except (ValueError, TypeError):
+        return jsonify({
+            "status": "Error",
+            "error": "Invalid quantity or price: must be integers",
+            "details": "Quantity and price must be valid numbers without decimals."
+        }), 400
+        
     new_record = {
         "id": data.get('item_id'),
-        "qty": int(data.get('qty')),
-        "price": int(data.get('price')),
+        "qty": qty,
+        "price": price,
         "location": data.get('location')
     }
 
     if signer_id not in ['A', 'B', 'C', 'D']:
-        return jsonify({"error": "Invalid inventory ID. Must be one of A, B, C, or D"}), 400
+        return jsonify({
+            "status": "Error",
+            "error": "Invalid inventory ID. Must be one of A, B, C, or D",
+            "details": "The signer must be from one of the authorized inventory nodes."
+        }), 400
     if new_record['location'] not in ['A', 'B', 'C', 'D']:
-        return jsonify({"error": "Invalid inventory ID. Must be one of A, B, C, or D"}), 400
+        return jsonify({
+            "status": "Error", 
+            "error": "Invalid location. Must be one of A, B, C, or D",
+            "details": "The item location must be a valid warehouse identifier."
+        }), 400
     if not all([signer_id, new_record['id'], new_record['qty'] is not None, new_record['price'] is not None, new_record['location']]):
-         return jsonify({"error": "Missing required fields"}), 400
+         return jsonify({
+             "status": "Error",
+             "error": "Missing required fields",
+             "details": "Please ensure all fields have valid values."
+         }), 400
     if signer_id not in INVENTORY_IDS:
-         return jsonify({"error": "Invalid signer inventory ID"}), 400
+         return jsonify({
+             "status": "Error",
+             "error": "Invalid signer inventory ID",
+             "details": "The signer ID must be a valid inventory node."
+         }), 400
 
     message = f"ADD:{new_record['id']},{new_record['qty']},{new_record['price']},{new_record['location']}"
     print(f"\n--- Proposing Record ---")
@@ -138,10 +185,51 @@ def add_record():
     print(f"Record: {new_record}")
     print(f"Message to Sign: {message}")
 
-    # 1. Signing
+    # Add timestamp to prevent replay attacks
+    timestamp = int(time.time())
+    message_with_ts = f"{message}|TS:{timestamp}"
+    print(f"Message with timestamp: {message_with_ts}")
+    
+    # 1. Signing - Add calculation details
+    calculation_steps = {
+        "key_details": {},
+        "signing_steps": {},
+        "verification_steps": {}
+    }
+    
     try:
         private_key = RSA_PRIVATE_KEYS[signer_id]
-        signature = rsa_sign(message, private_key)
+        d, n = private_key
+        
+        # Add key details
+        pub_key = RSA_PUBLIC_KEYS[signer_id]
+        e, n = pub_key
+        p, q = INVENTORY_KEYS[signer_id]['p'], INVENTORY_KEYS[signer_id]['q']
+        phi_n = (p-1) * (q-1)
+        
+        calculation_steps["key_details"] = {
+            "p": str(p),
+            "q": str(q),
+            "n": str(n),
+            "phi_n": str(phi_n),
+            "e": str(e),
+            "d": str(d)
+        }
+        
+        # Calculate hash for the message
+        msg_hash_int = hash_message_to_int(message_with_ts)
+        
+        # Sign the message
+        signature = rsa_sign(message_with_ts, private_key)
+        
+        calculation_steps["signing_steps"] = {
+            "message": message,
+            "message_with_timestamp": message_with_ts,
+            "message_hash": str(msg_hash_int),
+            "calculation": f"signature = (message_hash)^d mod n = ({msg_hash_int})^{d} mod {n}",
+            "signature": str(signature)
+        }
+        
         print(f"Signature generated by {signer_id}: {signature}")
     except KeyError:
         return jsonify({"error": f"Keys not found for signer {signer_id}"}), 500
@@ -161,8 +249,19 @@ def add_record():
         if node_id != signer_id:
             print(f"  - Verifying signature by Node {node_id}...")
             try:
-                is_valid = rsa_verify(message, signature, signer_public_key)
+                # Verify using message with timestamp
+                is_valid = rsa_verify(message_with_ts, signature, signer_public_key)
                 verification_details[node_id] = f"Verified: {is_valid}"
+                
+                # Add verification calculation steps
+                e, n = signer_public_key
+                decrypted_hash = pow(signature, e, n)
+                calculation_steps["verification_steps"][node_id] = {
+                    "calculation": f"(signature)^e mod n = ({signature})^{e} mod {n} = {decrypted_hash}",
+                    "expected_hash": str(msg_hash_int),
+                    "result": "Valid" if is_valid else "Invalid"
+                }
+                
                 if is_valid:
                     validations += 1
                     print(f"  - Node {node_id}: Signature VALID")
@@ -204,8 +303,11 @@ def add_record():
                  "new_record": new_record,
                  "signature": str(signature), 
                  "verification_details": verification_details,
-                 "commit_status": commit_status
-             }), 200
+                 "commit_status": commit_status,
+                 "timestamp": timestamp,
+                 "details": "The record was successfully added to all inventory nodes after consensus validation.",
+                 "calculation_steps": calculation_steps
+             }), 201 
         else:
              return jsonify({
                  "status": "Consensus Reached but Commit Failed",
@@ -213,8 +315,9 @@ def add_record():
                  "new_record": new_record,
                  "signature": str(signature),
                  "verification_details": verification_details,
-                 "commit_status": commit_status
-             }), 500
+                 "commit_status": commit_status,
+                 "details": "Although consensus was reached, there was an error saving the record to one or more inventory databases."
+             }), 500  # Server error
     else:
         print("--- Consensus Failed! Record Rejected ---")
         return jsonify({
@@ -223,20 +326,48 @@ def add_record():
             "required": CONSENSUS_THRESHOLD,
             "received": validations,
             "signature": str(signature),
-            "verification_details": verification_details
-        }), 400
+            "verification_details": verification_details,
+            "details": f"Consensus requires at least {CONSENSUS_THRESHOLD} validations, but only {validations} nodes agreed."
+        }), 403  # Forbidden - better status code for consensus rejection
 
 
 @app.route('/query_item', methods=['POST'])
 def query_item():
-    """Handles querying an item: Fetch -> Multi-Sign -> Encrypt Response."""
+    """Handles querying a record: Multi-sign -> Encrypt -> Return"""
     data = request.get_json()
-    item_id_to_query = data.get('query_item_id')
+    if not data:
+        return jsonify({
+            "status": "Error",
+            "error": "Missing or invalid JSON data",
+            "details": "Please provide a valid query_item_id parameter."
+        }), 400
 
-    if not item_id_to_query:
-        return jsonify({"error": "Missing item ID to query"}), 400
+    query_item_id = data.get('query_item_id')
+    if not query_item_id:
+        return jsonify({
+            "status": "Error",
+            "error": "Missing query_item_id parameter",
+            "details": "You must provide an item ID to search for."
+        }), 400
 
-    print(f"\n--- Processing Query for Item ID: {item_id_to_query} ---")
+    print(f"\n--- Processing Query for Item ID: {query_item_id} ---")
+
+    # Add calculation steps tracking
+    calculation_steps = {
+        "pkg_setup": {},
+        "partial_signatures": {},
+        "aggregation": {}
+    }
+    
+    # Add PKG setup information
+    e_pkg, n_pkg = PKG_PUBLIC_PARAMS
+    calculation_steps["pkg_setup"] = {
+        "p": str(PKG_PARAMS['p']),
+        "q": str(PKG_PARAMS['q']),
+        "n": str(n_pkg),
+        "e": str(e_pkg),
+        "phi_n": str((PKG_PARAMS['p']-1) * (PKG_PARAMS['q']-1))
+    }
 
     # 1. Find Record & Collect Partial Signatures
     found_record_str = None
@@ -255,31 +386,48 @@ def query_item():
         inventory_data = load_inventory(node_id)
         record_found_in_node = None
         for item in inventory_data:
-            if item['id'] == item_id_to_query:
+            if item['id'] == query_item_id:
                 record_found_in_node = item
                 break
 
         if record_found_in_node:
             nodes_checked += 1
-            current_record_str = f"ID:{item['id']},QTY:{item['qty']},PRICE:{item['price']},LOC:{item['location']}"
+            timestamp = int(time.time())
+            current_record_str = f"ID:{item['id']},QTY:{item['qty']},PRICE:{item['price']},LOC:{item['location']},TS:{timestamp}"
             print(f"    Record found: {current_record_str}")
 
             if found_record_str is None:
                 found_record_str = current_record_str 
-            elif found_record_str != current_record_str:
+            elif found_record_str.split(",TS:")[0] != current_record_str.split(",TS:")[0]:
                 print(f"    ERROR: Inconsistent record found by Node {node_id}!")
                 consistent_record = False
-                return jsonify({"error": f"Inconsistent data found for item {item_id_to_query} across nodes."}), 500
+                return jsonify({"error": f"Inconsistent data found for item {query_item_id} across nodes."}), 500
 
             try:
                 user_secret = HARN_USER_SECRET_KEYS[node_id]
                 identity_int = HARN_IDS[node_id]
                 random_val = HARN_RANDOM_VALUES[node_id]
 
+                # Calculate hash of message with random value
+                h_mr = harn_hash_msg_rand(found_record_str, random_val, n_pkg)
+                
+                # Generate partial signature
                 partial_sig = harn_partial_sign(found_record_str, random_val, user_secret, n_pkg)
                 partial_signatures.append(partial_sig)
                 signer_ids_int.append(identity_int)
                 signer_random_vals.append(random_val)
+                
+                # Add calculation step details
+                calculation_steps["partial_signatures"][node_id] = {
+                    "identity": str(identity_int),
+                    "random_value": str(random_val),
+                    "secret_key": str(user_secret),
+                    "message": found_record_str,
+                    "hash_calculation": f"H(message||random) = H(\"{found_record_str}||{random_val}\") = {h_mr}",
+                    "signature_calculation": f"partial_sig = H^secret mod n = {h_mr}^{user_secret} mod {n_pkg}",
+                    "partial_signature": str(partial_sig)
+                }
+                
                 print(f"    Partial signature generated by {node_id}.")
 
             except KeyError:
@@ -290,27 +438,40 @@ def query_item():
                  print(f"    ERROR: Partial signing failed for {node_id}: {e}")
                  return jsonify({"error": f"Partial signing failed for node {node_id}: {e}"}), 500
         else:
-            print(f"    Record ID {item_id_to_query} not found in Node {node_id}.")
-            return jsonify({"error": f"Item ID {item_id_to_query} not found in inventory {node_id}"}), 404
+            print(f"    Record ID {query_item_id} not found in Node {node_id}.")
+            return jsonify({"error": f"Item ID {query_item_id} not found in inventory {node_id}"}), 404
 
     if not found_record_str:
-        print(f"--- Query Failed: Item ID {item_id_to_query} not found in any inventory ---")
-        return jsonify({"error": f"Item ID {item_id_to_query} not found"}), 404
+        print(f"--- Query Failed: Item ID {query_item_id} not found in any inventory ---")
+        return jsonify({"error": f"Item ID {query_item_id} not found"}), 404
 
     if not consistent_record: # Should have been caught earlier, but double-check
          return jsonify({"error": "Inconsistent data found"}), 500
 
     print(f"--- Found consistent record: {found_record_str} ---")
 
-    # 2. Aggregate Signatures
+    # 2. Aggregate Signatures with calculation details
     try:
+        aggregation_formula = "aggregated_sig = "
+        for i, sig in enumerate(partial_signatures):
+            if i > 0:
+                aggregation_formula += " * "
+            aggregation_formula += f"{sig}"
+        aggregation_formula += f" mod {n_pkg}"
+        
         aggregated_sigma = harn_aggregate_signatures(partial_signatures, n_pkg)
+        
+        calculation_steps["aggregation"] = {
+            "formula": aggregation_formula,
+            "result": str(aggregated_sigma)
+        }
+        
         print(f"Aggregated Signature: {aggregated_sigma}")
     except Exception as e:
         print(f"ERROR: Aggregation failed: {e}")
         return jsonify({"error": f"Signature aggregation failed: {e}"}), 500
 
-    # 3. Encrypt Response using Procurement Officer's Public Key
+    # 3. Encrypt Response with calculation details
     if not OFFICER_PUBLIC_KEY:
         return jsonify({"error": "Procurement Officer keys not initialized"}), 500
 
@@ -321,7 +482,7 @@ def query_item():
         print(f"ERROR: Encryption failed: {e}")
         return jsonify({"error": f"Encryption failed: {e}"}), 500
 
-    # 4. Return Encrypted Data and Signature Info
+    # 4. Return Encrypted Data, Signature Info, and Calculation Steps
     return jsonify({
         "encrypted_record": str(encrypted_record), 
         "aggregated_signature": str(aggregated_sigma), 
@@ -329,7 +490,8 @@ def query_item():
         "random_values": signer_random_vals,
         "e_pkg": str(e_pkg),  
         "n_pkg": str(n_pkg),  
-        "signed_message": found_record_str 
+        "signed_message": found_record_str,
+        "calculation_steps": calculation_steps
     }), 200
 
 
@@ -355,7 +517,18 @@ def decrypt_verify():
         if value is None or value == '': 
             errors[key] = "Missing required field"
         else:
-            if key in ['encrypted_data', 'aggregated_signature', 'e_pkg', 'n_pkg']:
+            if key == 'encrypted_data':
+                # Handle potential chunked encryption format
+                if isinstance(value, str) and value.startswith("CHUNKED:"):
+                    processed_data[key] = value
+                else:
+                    try:
+                        if isinstance(value, str) and ('e' in value.lower() or 'E' in value):
+                            value = float(value)
+                        processed_data[key] = int(value)
+                    except (ValueError, TypeError):
+                        errors[key] = f"Invalid value: Must be convertible to an integer or chunked format (got '{value}')"
+            elif key in ['aggregated_signature', 'e_pkg', 'n_pkg']:
                 try:
                     if isinstance(value, str) and ('e' in value.lower() or 'E' in value):
                         value = float(value)  
@@ -378,7 +551,6 @@ def decrypt_verify():
         print(f"Validation Errors: {errors}")
         return jsonify({"error": "Invalid or missing data in request", "details": errors}), 400
 
-    # --- Use Validated Data ---
     encrypted_data = processed_data['encrypted_data']
     aggregated_signature = processed_data['aggregated_signature']
     identities = processed_data['identities']
@@ -422,7 +594,6 @@ def decrypt_verify():
         verification_message = processed_data.get('signed_message', decrypted_message)
         print(f"Using message for verification: {verification_message}")
         
-        # Log values for debugging
         print(f"Verifying multi-signature:")
         print(f"  Message: {verification_message}")
         print(f"  Aggregated Signature: {aggregated_signature}")
@@ -440,6 +611,14 @@ def decrypt_verify():
         )
         verification_status = "Verified Successfully" if is_verified else "Verification FAILED"
         print(f"Multi-Signature Verification Result: {verification_status}")
+        
+        if not is_verified:
+            print("ERROR: Multi-signature verification failed - signature invalid")
+            return jsonify({
+                "decrypted_message": decrypted_message,
+                "error": "Multi-signature verification failed - signature invalid",
+                "verification_status": verification_status
+            }), 401
     except Exception as e:
         print(f"ERROR: Multi-signature verification failed: {e}")
         return jsonify({
@@ -453,13 +632,41 @@ def decrypt_verify():
         "verification_status": verification_status
     }), 200
 
-
-
-
-if __name__ == '__main__':
-    initialize_keys() # Generate keys when the app starts
-    if not RSA_PUBLIC_KEYS or not PKG_PUBLIC_PARAMS or not OFFICER_PUBLIC_KEY:
-         print("\nCRITICAL ERROR: Essential keys failed to initialize. Exiting.")
-         exit(1)
-    print("\nStarting Flask server...")
-    app.run(debug=True, port=5001) 
+if __name__ == "__main__":
+    import socket
+    import argparse
+    
+    initialize_keys()
+    
+    # Setup command line arguments
+    parser = argparse.ArgumentParser(description='Run the Blockchain Inventory System server')
+    parser.add_argument('--port', type=int, default=5001, help='Port number to run the server on')
+    parser.add_argument('--debug', action='store_true', help='Run in debug mode')
+    args = parser.parse_args()
+    
+    # Find an available port if the specified one is in use
+    port = args.port
+    max_retry = 5
+    retry_count = 0
+    
+    while retry_count < max_retry:
+        try:
+            test_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            test_socket.bind(('localhost', port))
+            test_socket.close()
+            # Port is available
+            break
+        except socket.error:
+            print(f"Port {port} is in use. Trying port {port+1}...")
+            port += 1
+            retry_count += 1
+    
+    if retry_count == max_retry:
+        print(f"Failed to find an available port after {max_retry} attempts. Please specify a different port.")
+        exit(1)
+    
+    print(f"\n==== Starting Blockchain Inventory Server on port {port} ====")
+    print(f"Access the application at http://localhost:{port}")
+    
+    # Run the Flask app
+    app.run(host='0.0.0.0', port=port, debug=args.debug) 

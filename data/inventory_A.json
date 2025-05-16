@@ -27,6 +27,30 @@
     "id": "005",
     "qty": 50,
     "price": 25,
-    "location": "Z"
+    "location": "D"
+  },
+  {
+    "id": "006",
+    "qty": 40,
+    "price": 24,
+    "location": "A"
+  },
+  {
+    "id": "007",
+    "qty": 50,
+    "price": 25,
+    "location": "A"
+  },
+  {
+    "id": "009",
+    "qty": 90,
+    "price": 10,
+    "location": "A"
+  },
+  {
+    "id": "010",
+    "qty": 90,
+    "price": 10,
+    "location": "A"
   }
 ]
