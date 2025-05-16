@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>INTE2627 A2 - Part 1: Digital Signatures & Consensus</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; padding: 20px; color: #333; }
+        .container { max-width: 900px; margin: auto; background: #f8f9fa; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .section { background: #fff; padding: 20px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        .part-label { display: inline-block; padding: 5px 10px; background: #007bff; color: white; border-radius: 3px; font-size: 0.8em; margin-bottom: 10px; }
+        h2, h3 { color: #333; border-bottom: 1px solid #eee; padding-bottom: 8px; }
+        .info-box { background: #e9f7fe; border-left: 4px solid #3498db; padding: 12px; margin-bottom: 15px; font-size: 0.9em; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="number"], select { width: 95%; padding: 8px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 3px; }
+        button { background: #5cb85c; color: white; padding: 10px 15px; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #4cae4c; }
+        pre { background: #f5f5f5; padding: 12px; border: 1px solid #ddd; white-space: pre-wrap; word-wrap: break-word; max-height: 300px; overflow-y: auto; border-radius: 4px; }
+        .error { color: #d9534f; font-weight: bold; }
+        .success { color: #5cb85c; font-weight: bold; }
+        .neutral { color: #f0ad4e; font-weight: normal; }
+        textarea { width: 95%; min-height: 80px; }
+        .log-container { margin-top: 10px; }
+        .log-title { background: #f8f9fa; padding: 5px 10px; font-weight: bold; border: 1px solid #ddd; border-radius: 4px 4px 0 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>INTE2627 Assignment 2 - Part 1: Digital Signatures & Consensus</h1>
+        
+        <div class="section">
+            <span class="part-label">PART 1</span>
+            <h2>Digital Signatures & Consensus Protocol</h2>
+            
+            <div class="info-box">
+                <strong>What this does:</strong> Add a new inventory record that will be digitally signed by the selected inventory node. 
+                The signature will be verified by all inventory nodes to reach consensus. If 3 out of 4 nodes agree (consensus threshold), 
+                the record will be added to all inventory databases.
+            </div>
+            
+            <form id="addRecordForm">
+                <label for="signer">Signing Inventory Node:</label>
+                <select id="signer" name="signer">
+                    <option value="A">Inventory A</option>
+                    <option value="B">Inventory B</option>
+                    <option value="C">Inventory C</option>
+                    <option value="D">Inventory D</option>
+                </select>
+
+                <label for="item_id">Item ID:</label>
+                <input type="text" id="item_id" name="item_id" required placeholder="e.g., 006">
+
+                <label for="qty">Quantity:</label>
+                <input type="number" id="qty" name="qty" required placeholder="e.g., 50">
+
+                <label for="price">Price:</label>
+                <input type="number" id="price" name="price" required placeholder="e.g., 25">
+
+                <label for="location">Location:</label>
+                <select id="location" name="location">
+                    <option value="A">Warehouse A</option>
+                    <option value="B">Warehouse B</option>
+                    <option value="C">Warehouse C</option>
+                    <option value="D">Warehouse D</option>
+                </select>
+
+                <button type="submit">Sign & Propose Record</button>
+            </form>
+            
+            <div class="log-container">
+                <div class="log-title">Process Log:</div>
+                <div id="addRecordResult">
+                    <pre class="neutral">Enter record details and click "Sign & Propose Record" to start the process.</pre>
+                </div>
+            </div>
+            
+            <!-- Calculation details section -->
+            <div class="log-container">
+                <div class="log-title">Calculation Details:</div>
+                <div id="calculationDetails" style="display: none;">
+                    <div>
+                        <h4>RSA Key Details:</h4>
+                        <pre id="keyDetails" class="neutral"></pre>
+                    </div>
+                    <div>
+                        <h4>Signing Process:</h4>
+                        <pre id="signingSteps" class="neutral"></pre>
+                    </div>
+                    <div>
+                        <h4>Verification Process:</h4>
+                        <pre id="verificationSteps" class="neutral"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Add Record Handler
+        const addRecordForm = document.getElementById('addRecordForm');
+        const addRecordResult = document.getElementById('addRecordResult').querySelector('pre');
+
+        addRecordForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            addRecordResult.textContent = 'Processing record submission...';
+            addRecordResult.className = 'neutral';
+            
+            // Hide calculation details while processing
+            document.getElementById('calculationDetails').style.display = 'none';
+            
+            const formData = new FormData(addRecordForm);
+            const data = Object.fromEntries(formData.entries());
+
+            try {
+                const response = await fetch('/add_record', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                
+                // Display the result
+                addRecordResult.textContent = JSON.stringify(result, null, 2);
+                if (response.ok && result.status === 'Consensus Reached') {
+                    addRecordResult.className = 'success';
+                    
+                    // If calculation steps are available, display them
+                    if (result.calculation_steps) {
+                        document.getElementById('calculationDetails').style.display = 'block';
+                        
+                        // Display key details
+                        const keyDetails = document.getElementById('keyDetails');
+                        if (result.calculation_steps.key_details) {
+                            keyDetails.textContent = 'RSA Parameters for Inventory ' + data.signer + ':\n';
+                            keyDetails.textContent += `p = ${result.calculation_steps.key_details.p}\n`;
+                            keyDetails.textContent += `q = ${result.calculation_steps.key_details.q}\n`;
+                            keyDetails.textContent += `n = p × q = ${result.calculation_steps.key_details.n}\n`;
+                            keyDetails.textContent += `φ(n) = (p-1) × (q-1) = ${result.calculation_steps.key_details.phi_n}\n`;
+                            keyDetails.textContent += `e = ${result.calculation_steps.key_details.e}\n`;
+                            keyDetails.textContent += `d = ${result.calculation_steps.key_details.d}\n`;
+                            keyDetails.textContent += `Public Key: (e, n) = (${result.calculation_steps.key_details.e}, ${result.calculation_steps.key_details.n})\n`;
+                            keyDetails.textContent += `Private Key: (d, n) = (${result.calculation_steps.key_details.d}, ${result.calculation_steps.key_details.n})`;
+                        }
+                        
+                        // Display signing steps
+                        const signingSteps = document.getElementById('signingSteps');
+                        if (result.calculation_steps.signing_steps) {
+                            signingSteps.textContent = 'Original Message: ' + result.calculation_steps.signing_steps.message + '\n';
+                            signingSteps.textContent += 'With Timestamp: ' + result.calculation_steps.signing_steps.message_with_timestamp + '\n\n';
+                            signingSteps.textContent += 'Hash(message): ' + result.calculation_steps.signing_steps.message_hash + '\n';
+                            signingSteps.textContent += 'Signature Calculation: \n' + result.calculation_steps.signing_steps.calculation + '\n';
+                            signingSteps.textContent += 'Final Signature: ' + result.calculation_steps.signing_steps.signature;
+                        }
+                        
+                        // Display verification steps
+                        const verificationSteps = document.getElementById('verificationSteps');
+                        if (result.calculation_steps.verification_steps) {
+                            verificationSteps.textContent = 'Verification by Each Node:\n\n';
+                            
+                            for (const [nodeId, steps] of Object.entries(result.calculation_steps.verification_steps)) {
+                                verificationSteps.textContent += `Node ${nodeId} Verification:\n`;
+                                verificationSteps.textContent += `${steps.calculation}\n`;
+                                verificationSteps.textContent += `Expected Hash: ${steps.expected_hash}\n`;
+                                verificationSteps.textContent += `Result: ${steps.result}\n\n`;
+                            }
+                        }
+                    }
+                    
+                } else {
+                    addRecordResult.className = 'error';
+                    document.getElementById('calculationDetails').style.display = 'none';
+                }
+
+            } catch (error) {
+                addRecordResult.textContent = `Error: ${error}`;
+                addRecordResult.className = 'error';
+                document.getElementById('calculationDetails').style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>

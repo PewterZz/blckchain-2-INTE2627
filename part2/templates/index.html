@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>INTE2627 A2 - Secure Inventory</title>
+    <title>INTE2627 A2 - Part 2: Multi-Signature Verification</title>
     <style>
         body { font-family: sans-serif; line-height: 1.6; padding: 20px; color: #333; }
         .container { max-width: 900px; margin: auto; background: #f8f9fa; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
@@ -21,89 +21,13 @@
         textarea { width: 95%; min-height: 80px; }
         .log-container { margin-top: 10px; }
         .log-title { background: #f8f9fa; padding: 5px 10px; font-weight: bold; border: 1px solid #ddd; border-radius: 4px 4px 0 0; }
-        #tabs { display: flex; margin-bottom: 20px; }
-        .tab { padding: 8px 16px; cursor: pointer; background: #f1f1f1; margin-right: 5px; border-radius: 5px 5px 0 0; }
-        .tab.active { background: #5cb85c; color: white; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>INTE2627 Assignment 2 - Secure DLT Inventory</h1>
+        <h1>INTE2627 Assignment 2 - Part 2: Multi-Signature Verification</h1>
         
-        <div id="tabs">
-            <div class="tab active" onclick="showPart('part1')">Part 1: Digital Signatures & Consensus</div>
-            <div class="tab" onclick="showPart('part2')">Part 2: Multi-Signature & Encryption</div>
-        </div>
-
-        <!-- Part 1: Add New Record -->
-        <div id="part1" class="section">
-            <span class="part-label">PART 1</span>
-            <h2>Digital Signatures & Consensus Protocol</h2>
-            
-            <div class="info-box">
-                <strong>What this does:</strong> Add a new inventory record that will be digitally signed by the selected inventory node. 
-                The signature will be verified by all inventory nodes to reach consensus. If 3 out of 4 nodes agree (consensus threshold), 
-                the record will be added to all inventory databases.
-            </div>
-            
-            <form id="addRecordForm">
-                <label for="signer">Signing Inventory Node:</label>
-                <select id="signer" name="signer">
-                    <option value="A">Inventory A</option>
-                    <option value="B">Inventory B</option>
-                    <option value="C">Inventory C</option>
-                    <option value="D">Inventory D</option>
-                </select>
-
-                <label for="item_id">Item ID:</label>
-                <input type="text" id="item_id" name="item_id" required placeholder="e.g., 006">
-
-                <label for="qty">Quantity:</label>
-                <input type="number" id="qty" name="qty" required placeholder="e.g., 50">
-
-                <label for="price">Price:</label>
-                <input type="number" id="price" name="price" required placeholder="e.g., 25">
-
-                <label for="location">Location:</label>
-                <select id="location" name="location">
-                    <option value="A">Warehouse A</option>
-                    <option value="B">Warehouse B</option>
-                    <option value="C">Warehouse C</option>
-                    <option value="D">Warehouse D</option>
-                </select>
-
-                <button type="submit">Sign & Propose Record</button>
-            </form>
-            
-            <div class="log-container">
-                <div class="log-title">Process Log:</div>
-                <div id="addRecordResult">
-                    <pre class="neutral">Enter record details and click "Sign & Propose Record" to start the process.</pre>
-                </div>
-            </div>
-            
-            <!-- Add new calculation details section -->
-            <div class="log-container">
-                <div class="log-title">Calculation Details:</div>
-                <div id="calculationDetails" style="display: none;">
-                    <div>
-                        <h4>RSA Key Details:</h4>
-                        <pre id="keyDetails" class="neutral"></pre>
-                    </div>
-                    <div>
-                        <h4>Signing Process:</h4>
-                        <pre id="signingSteps" class="neutral"></pre>
-                    </div>
-                    <div>
-                        <h4>Verification Process:</h4>
-                        <pre id="verificationSteps" class="neutral"></pre>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Part 2: Query Item -->
-        <div id="part2" class="section" style="display: none;">
+        <div class="section">
             <span class="part-label">PART 2</span>
             <h2>Multi-Signature Verification & Secure Query</h2>
             
@@ -134,15 +58,15 @@
             </div>
             
             <form id="decryptVerifyForm" style="display: none; margin-top: 20px;">
-                 <input type="hidden" id="hidden_encrypted_data" name="encrypted_data">
-                 <input type="hidden" id="hidden_agg_sig" name="aggregated_signature">
-                 <input type="hidden" id="hidden_ids" name="identities">
-                 <input type="hidden" id="hidden_rands" name="random_values">
-                 <input type="hidden" id="hidden_e_pkg" name="e_pkg">
-                 <input type="hidden" id="hidden_n_pkg" name="n_pkg">
-                 <input type="hidden" id="hidden_signed_message" name="signed_message">
-                 <button type="submit">Decrypt & Verify Response</button>
-             </form>
+                <input type="hidden" id="hidden_encrypted_data" name="encrypted_data">
+                <input type="hidden" id="hidden_agg_sig" name="aggregated_signature">
+                <input type="hidden" id="hidden_ids" name="identities">
+                <input type="hidden" id="hidden_rands" name="random_values">
+                <input type="hidden" id="hidden_e_pkg" name="e_pkg">
+                <input type="hidden" id="hidden_n_pkg" name="n_pkg">
+                <input type="hidden" id="hidden_signed_message" name="signed_message">
+                <button type="submit">Decrypt & Verify Response</button>
+            </form>
              
             <div class="log-container">
                 <div class="log-title">Decryption & Verification Result:</div>
@@ -151,7 +75,7 @@
                 </div>
             </div>
             
-            <!-- Add new multi-sig calculation details section -->
+            <!-- Multi-sig calculation details section -->
             <div class="log-container">
                 <div class="log-title">Multi-Signature Calculation Details:</div>
                 <div id="multiSigDetails" style="display: none;">
@@ -173,109 +97,12 @@
     </div>
 
     <script>
-        // Tab switching
-        function showPart(partId) {
-            document.getElementById('part1').style.display = 'none';
-            document.getElementById('part2').style.display = 'none';
-            document.getElementById(partId).style.display = 'block';
-            
-            // Update active tab
-            const tabs = document.getElementsByClassName('tab');
-            for (let tab of tabs) {
-                tab.classList.remove('active');
-            }
-            event.currentTarget.classList.add('active');
-        }
-        
-        // --- Add Record Handler ---
-        const addRecordForm = document.getElementById('addRecordForm');
-        const addRecordResult = document.getElementById('addRecordResult').querySelector('pre');
-
-        addRecordForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            addRecordResult.textContent = 'Processing record submission...';
-            addRecordResult.className = 'neutral';
-            
-            // Hide calculation details while processing
-            document.getElementById('calculationDetails').style.display = 'none';
-            
-            const formData = new FormData(addRecordForm);
-            const data = Object.fromEntries(formData.entries());
-
-            try {
-                const response = await fetch('/add_record', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-                const result = await response.json();
-                
-                // Display the result
-                addRecordResult.textContent = JSON.stringify(result, null, 2);
-                if (response.ok && result.status === 'Consensus Reached') {
-                    addRecordResult.className = 'success';
-                    
-                    // If calculation steps are available, display them
-                    if (result.calculation_steps) {
-                        document.getElementById('calculationDetails').style.display = 'block';
-                        
-                        // Display key details
-                        const keyDetails = document.getElementById('keyDetails');
-                        if (result.calculation_steps.key_details) {
-                            keyDetails.textContent = 'RSA Parameters for Inventory ' + data.signer + ':\n';
-                            keyDetails.textContent += `p = ${result.calculation_steps.key_details.p}\n`;
-                            keyDetails.textContent += `q = ${result.calculation_steps.key_details.q}\n`;
-                            keyDetails.textContent += `n = p × q = ${result.calculation_steps.key_details.n}\n`;
-                            keyDetails.textContent += `φ(n) = (p-1) × (q-1) = ${result.calculation_steps.key_details.phi_n}\n`;
-                            keyDetails.textContent += `e = ${result.calculation_steps.key_details.e}\n`;
-                            keyDetails.textContent += `d = ${result.calculation_steps.key_details.d}\n`;
-                            keyDetails.textContent += `Public Key: (e, n) = (${result.calculation_steps.key_details.e}, ${result.calculation_steps.key_details.n})\n`;
-                            keyDetails.textContent += `Private Key: (d, n) = (${result.calculation_steps.key_details.d}, ${result.calculation_steps.key_details.n})`;
-                        }
-                        
-                        // Display signing steps
-                        const signingSteps = document.getElementById('signingSteps');
-                        if (result.calculation_steps.signing_steps) {
-                            signingSteps.textContent = 'Original Message: ' + result.calculation_steps.signing_steps.message + '\n';
-                            signingSteps.textContent += 'With Timestamp: ' + result.calculation_steps.signing_steps.message_with_timestamp + '\n\n';
-                            signingSteps.textContent += 'Hash(message): ' + result.calculation_steps.signing_steps.message_hash + '\n';
-                            signingSteps.textContent += 'Signature Calculation: \n' + result.calculation_steps.signing_steps.calculation + '\n';
-                            signingSteps.textContent += 'Final Signature: ' + result.calculation_steps.signing_steps.signature;
-                        }
-                        
-                        // Display verification steps
-                        const verificationSteps = document.getElementById('verificationSteps');
-                        if (result.calculation_steps.verification_steps) {
-                            verificationSteps.textContent = 'Verification by Each Node:\n\n';
-                            
-                            for (const [nodeId, steps] of Object.entries(result.calculation_steps.verification_steps)) {
-                                verificationSteps.textContent += `Node ${nodeId} Verification:\n`;
-                                verificationSteps.textContent += `${steps.calculation}\n`;
-                                verificationSteps.textContent += `Expected Hash: ${steps.expected_hash}\n`;
-                                verificationSteps.textContent += `Result: ${steps.result}\n\n`;
-                            }
-                        }
-                    }
-                    
-                } else {
-                    addRecordResult.className = 'error';
-                    document.getElementById('calculationDetails').style.display = 'none';
-                }
-
-            } catch (error) {
-                addRecordResult.textContent = `Error: ${error}`;
-                addRecordResult.className = 'error';
-                document.getElementById('calculationDetails').style.display = 'none';
-            }
-        });
-
-        // --- Query Item Handler ---
+        // Query Item Handler
         const queryItemForm = document.getElementById('queryItemForm');
         const encryptedDataPre = document.getElementById('encryptedData');
         const signatureDataPre = document.getElementById('signatureData');
         const decryptVerifyForm = document.getElementById('decryptVerifyForm');
         const decryptVerifyResultPre = document.getElementById('decryptVerifyResult').querySelector('pre');
-
 
         queryItemForm.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -305,9 +132,9 @@
                     encryptedDataPre.textContent = `Ciphertext: ${result.encrypted_record}`;
                     encryptedDataPre.className = 'success';
                     signatureDataPre.textContent = `Aggregated Signature: ${result.aggregated_signature}\n`
-                                                 + `Signer IDs: ${JSON.stringify(result.identities)}\n`
-                                                 + `Random Values: ${JSON.stringify(result.random_values)}\n`
-                                                 + `PKG Params (e, n): (${result.e_pkg}, ${result.n_pkg})`;
+                                                + `Signer IDs: ${JSON.stringify(result.identities)}\n`
+                                                + `Random Values: ${JSON.stringify(result.random_values)}\n`
+                                                + `PKG Params (e, n): (${result.e_pkg}, ${result.n_pkg})`;
                     signatureDataPre.className = 'success';
 
                     // If calculation steps are available, display them
@@ -377,7 +204,7 @@
             }
         });
 
-         // --- Decrypt/Verify Handler ---
+        // Decrypt/Verify Handler
         decryptVerifyForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             decryptVerifyResultPre.textContent = 'Decrypting and verifying...';
@@ -413,7 +240,6 @@
                 decryptVerifyResultPre.className = 'error';
             }
         });
-
     </script>
 </body>
 </html>

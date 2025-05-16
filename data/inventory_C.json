@@ -52,5 +52,11 @@
     "qty": 90,
     "price": 10,
     "location": "A"
+  },
+  {
+    "id": "011",
+    "qty": 1,
+    "price": 1,
+    "location": "A"
   }
 ]
