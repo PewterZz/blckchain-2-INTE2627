@@ -14,8 +14,6 @@ def modInverse(a, m):
     """Computes the modular inverse of a modulo m."""
     d, x, y = extended_gcd(a, m)
     if d != 1:
-        # Inverse does not exist
-        # This should not happen with the provided keys if e is chosen correctly
         raise ValueError("Modular inverse does not exist")
     else:
         return x % m
@@ -27,13 +25,11 @@ def message_to_int(message):
 def int_to_message(integer, byte_len=None):
     """Converts an integer back to a string message."""
     if byte_len is None:
-        # Estimate length, might need adjustment if leading zeros are critical
         byte_len = (integer.bit_length() + 7) // 8
     try:
         return integer.to_bytes(byte_len, "big").decode("utf-8")
     except UnicodeDecodeError:
         print(f"Warning: Potential decoding issue for int {integer}")
-        # Attempt recovery, might be lossy
         return integer.to_bytes((integer.bit_length() + 7) // 8, "big").decode(
             "utf-8", errors="ignore"
         )
@@ -90,12 +86,12 @@ def rsa_encrypt(message_str, public_key):
     If message is too large, splits it into chunks."""
     e, n = public_key
     
-    # Calculate maximum bytes that can be encrypted with this key
+    #Calculate maximum bytes that can be encrypted with this key
     max_bytes = (n.bit_length() - 1) // 8
     
-    # If message fits in one block, encrypt normally
+    #If message fits in one block, encrypt normally
     msg_bytes = message_str.encode("utf-8")
-    if len(msg_bytes) <= max_bytes - 11:  # Reserve space for PKCS#1 padding
+    if len(msg_bytes) <= max_bytes - 11:  #PKCS#1 padding
         msg_int = message_to_int(message_str)
         if msg_int >= n:
             raise ValueError(
@@ -122,9 +118,8 @@ def rsa_decrypt(ciphertext, private_key):
     Handles both single blocks and chunked messages."""
     d, n = private_key
     
-    # Check if this is a chunked ciphertext
     if isinstance(ciphertext, str) and ciphertext.startswith("CHUNKED:"):
-        chunks = ciphertext[8:].split("|")  # Remove "CHUNKED:" prefix and split
+        chunks = ciphertext[8:].split("|")  
         decrypted_chunks = []
         
         for chunk in chunks:
@@ -134,7 +129,6 @@ def rsa_decrypt(ciphertext, private_key):
             decrypted_text = int_to_message(decrypted_int, byte_len)
             decrypted_chunks.append(decrypted_text)
         
-        # Combine all chunks
         return "".join(decrypted_chunks)
     
     # Regular single-block decryption
@@ -171,7 +165,6 @@ def harn_extract_secret_key(identity_int, pkg_master_secret, n_pkg):
 def harn_hash_msg_rand(message, random_val, n_pkg=None):
     """Hashes the message concatenated with the random value using full SHA-256."""
     combined = f"{message}||{random_val}"
-    # Use the full hash rather than reducing modulo n_pkg to avoid hash collisions
     return hash_message_to_int(combined)
 
 def harn_partial_sign(message, random_val, user_secret_key, n_pkg):
@@ -199,7 +192,6 @@ def harn_verify_multi_sig(
     """Verifies the aggregated multi-signature."""
     e_pkg, n_pkg = pkg_public_params
     
-    # Ensure all parameters are integers
     if isinstance(aggregated_sigma, str):
         aggregated_sigma = int(aggregated_sigma)
     if isinstance(e_pkg, str):
